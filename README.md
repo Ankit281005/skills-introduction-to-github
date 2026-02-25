@@ -1,51 +1,122 @@
-# Introduction to GitHub
+# Hospital Data Pipeline
 
-_Get started using GitHub in less than an hour._
+A Python batch data pipeline that processes hospital data through Bronze → Silver → Gold layers and generates visualizations.
 
-## Welcome
+## Pipeline Architecture
 
-People use GitHub to build some of the most advanced technologies in the world. Whether you’re visualizing data or building a new game, there’s a whole community and set of tools on GitHub that can help you do it even better. GitHub Skills’ “Introduction to GitHub” exercise guides you through everything you need to start contributing in less than an hour.
+### Bronze Layer (Raw Ingestion)
+- Reads source files from `data/` directory.
+- Stores exact raw copies as CSV files in `bronze/`.
+- No transformations applied.
+- Output files:
+  - `bronze/ehr.csv`
+  - `bronze/vitals.csv`
+  - `bronze/labs.csv`
 
-- **Who is this for**: New developers, new GitHub users, and students.
-- **What you'll learn**: We'll introduce repositories, branches, commits, and pull requests.
-- **What you'll build**: We'll make a short Markdown file you can use as your [profile README](https://docs.github.com/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme).
-- **Prerequisites**: None. This exercise is a great introduction for your first day on GitHub.
-- **How long**: This exercise takes less than one hour to complete.
+### Silver Layer (Cleaning & Standardization)
+- **Clean Vitals**
+  - Renames `patientId` → `patient_id`
+  - Converts UNIX timestamps to datetime
+  - Ensures numeric types for `hr`, `ox`, `sys`, `dia`
+- **Clean Labs**
+  - Renames columns:
+    - `patientId` → `patient_id`
+    - `test` → `lab_test`
+    - `value` → `lab_value`
+  - Converts UNIX timestamps to datetime
+  - Ensures numeric lab values
+- **Patient Master Table**
+  - Combines EHR data with latest vitals
+  - Combines latest lab results per test for each patient
+- Output files:
+  - `silver/clean_vitals.csv`
+  - `silver/clean_labs.csv`
+  - `silver/patient_master.csv`
 
-In this exercise, you will:
+### Gold Layer (Anomaly Detection)
+Detects anomalies based on:
+- High Heart Rate: `HR > 120` bpm
+- Low Oxygen: `OX < 92%`
+- High Blood Pressure: `SYS > 160` OR `DIA > 100` mmHg
 
-1. Create a branch
-2. Commit a file
-3. Open a pull request
-4. Merge your pull request
+Output file:
+- `gold/anomalies.csv`
 
-### How to start this exercise
+## Data Cleaning Details
 
-1. Right-click **Copy Exercise** and open the link in a new tab.
+### Latest Record Selection
+- Vitals: Sorted by timestamp, grouped by `patient_id`, selected last record.
+- Labs: Sorted by timestamp, grouped by `patient_id` and `lab_test`, selected last record per test.
 
-   <a id="copy-exercise">
-      <img src="https://img.shields.io/badge/📠_Copy_Exercise-AAA" height="25pt"/>
-   </a>
+### Type Conversions
+- UNIX timestamps converted to pandas datetime.
+- All vital signs and lab values converted to numeric with error handling.
 
-2. In the new tab, most of the prompts will automatically fill in for you.
-   - For owner, choose your personal account or an organization to host the repository.
-   - We recommend creating a public repository, as private repositories will [use Actions minutes](https://docs.github.chttps://github.com/Ankit281005/skills-introduction-to-github/billing/managing-billing-for-github-actions/about-billing-for-github-actions).
-   - Scroll down and click the **Create repository** button at the bottom of the form.
+## Visualizations
+Generated in `visualizations/`:
+1. `hr_trend.png`: Multi-line plot showing heart rate over time for all patients.
+2. `oxygen_distribution.png`: Histogram with threshold line at 92%.
+3. `anomaly_counts.png`: Bar chart showing count of each anomaly type.
 
-3. After your new repository is created, wait about 20 seconds for the exercise to be prepared and buttons updated. You will continue working from your copy of the exercise.
-   - The **Copy Exercise** button will deactivate, changing to gray.
-   - The **Start Exercise** button will activate, changing to green.
-   - You will likely need to refresh the page.
+## How to Run
 
-4. Click **Start Exercise**. Follow the step-by-step instructions and feedback will be provided as you progress.
+```bash
+python main.py
+```
 
-   <a id="start-exercise" href="https://github.com/Ankit281005/skills-introduction-to-github/issues/1">
-      <img src="https://img.shields.io/badge/🚀_Start_Exercise-008000" height="25pt"/>
-   </a>
+## Re-runnable Pipeline Behavior
+The pipeline is fully idempotent and re-runnable:
+- Always reads fresh input files from `data/`
+- Overwrites all outputs in Bronze, Silver, and Gold layers
+- Regenerates all visualizations
+- No caching or state persistence
 
-> [!IMPORTANT]
-> The **Start Exercise** button will activate after copying the repository. You will probably need to refresh the page.
+## Adding New Data
+Add new rows to source input files and run:
 
----
+```bash
+python main.py
+```
 
-&copy; 2025 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+Supported source formats:
+- `ehr.csv`
+- `vitals.csv` or `vitals.jsonl`
+- `labs.csv` or `labs.json`
+
+All outputs automatically refresh from current source data.
+
+## Tech Stack
+- Python
+- pandas
+- numpy
+- matplotlib
+- json
+- pathlib
+
+## Project Structure
+
+```text
+project/
+├── data/                 # Input files
+├── bronze/               # Raw ingested data
+├── silver/               # Cleaned and standardized data
+├── gold/                 # Anomaly detection results
+├── visualizations/       # Generated plots
+├── src/                  # Source code modules
+│   ├── bronze.py
+│   ├── silver.py
+│   ├── gold.py
+│   ├── visualize.py
+│   └── utils.py
+├── main.py               # Pipeline orchestration
+└── README.md
+```
+
+## Execution Flow
+1. Setup: Create required folders
+2. Bronze: Ingest raw data
+3. Silver: Clean and standardize data, create patient master
+4. Gold: Detect anomalies
+5. Visualization: Generate plots
+
+Each step prints a log message indicating completion.
